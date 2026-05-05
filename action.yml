@@ -1,0 +1,103 @@
+name: "SafeLog"
+description: "Scan, redact, and analyze logs locally in CI."
+inputs:
+  path:
+    description: "Log file or glob to analyze"
+    required: true
+  fail-on:
+    description: "When to fail: never, warn, block"
+    required: false
+    default: "block"
+  report-format:
+    description: "Report format: json, markdown, both"
+    required: false
+    default: "both"
+  max-size:
+    description: "Maximum log file size, e.g. 5MB"
+    required: false
+    default: "5MB"
+  upload-redacted-log:
+    description: "Whether to save redacted log output"
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Install uv if needed
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v uv >/dev/null 2>&1; then
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+        fi
+
+    - name: Install SafeLog
+      shell: bash
+      run: |
+        set -euo pipefail
+        uv sync
+
+    - name: Run SafeLog
+      shell: bash
+      run: |
+        set -uo pipefail
+
+        mkdir -p safelog-reports
+        shopt -s nullglob
+        files=( ${{ inputs.path }} )
+
+        if [ "${#files[@]}" -eq 0 ]; then
+          echo "SafeLog found no log files for path: ${{ inputs.path }}" >&2
+          exit 2
+        fi
+
+        overall_status=0
+        for file in "${files[@]}"; do
+          safe_name="$(echo "$file" | sed 's#[^A-Za-z0-9._-]#_#g')"
+
+          case "${{ inputs.report-format }}" in
+            json|both)
+              uv run safelog analyze "$file" \
+                --json \
+                --out "safelog-reports/${safe_name}.json" \
+                --fail-on never \
+                --max-size "${{ inputs.max-size }}" || exit $?
+              ;;
+          esac
+
+          case "${{ inputs.report-format }}" in
+            markdown|both)
+              uv run safelog analyze "$file" \
+                --markdown \
+                --out "safelog-reports/${safe_name}.md" \
+                --fail-on never \
+                --max-size "${{ inputs.max-size }}" || exit $?
+              if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+                cat "safelog-reports/${safe_name}.md" >> "$GITHUB_STEP_SUMMARY"
+                printf '\n' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
+          esac
+
+          if [ "${{ inputs.upload-redacted-log }}" = "true" ]; then
+            uv run safelog redact "$file" --out "safelog-reports/${safe_name}.redacted.log" || exit $?
+          fi
+
+          uv run safelog analyze "$file" \
+            --json \
+            --out "safelog-reports/${safe_name}.policy.json" \
+            --fail-on "${{ inputs.fail-on }}" \
+            --max-size "${{ inputs.max-size }}"
+          status=$?
+
+          if [ "$status" -eq 2 ]; then
+            exit 2
+          fi
+          if [ "$status" -ne 0 ]; then
+            overall_status=1
+          fi
+        done
+
+        exit "$overall_status"

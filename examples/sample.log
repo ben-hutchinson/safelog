@@ -1,0 +1,5 @@
+2026-05-05T10:00:00Z INFO service=checkout request_id=123e4567-e89b-12d3-a456-426614174000 status=200
+2026-05-05T10:00:01Z ERROR Database connection timeout status=500 path=/srv/app/orders.py
+2026-05-05T10:00:01Z ERROR Database connection timeout status=500 path=/srv/app/orders.py
+2026-05-05T10:00:02Z WARN retrying upstream https://api.example.test/v1/orders
+2026-05-05T10:00:03Z INFO user=demo.user@example.test ip=10.0.0.42

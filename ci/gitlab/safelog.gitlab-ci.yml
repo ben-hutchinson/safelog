@@ -1,0 +1,64 @@
+variables:
+  SAFELOG_PATH: "examples/sensitive.log"
+  SAFELOG_FAIL_ON: "block"
+  SAFELOG_MAX_SIZE: "5MB"
+  SAFELOG_REPORT_FORMAT: "both"
+
+safelog:
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm
+  stage: test
+  script:
+    - uv sync
+    - mkdir -p safelog-reports
+    - |
+      set -uo pipefail
+      files=( $SAFELOG_PATH )
+      if [ "${#files[@]}" -eq 0 ]; then
+        echo "SafeLog found no log files for path: $SAFELOG_PATH" >&2
+        exit 2
+      fi
+
+      overall_status=0
+      for file in "${files[@]}"; do
+        safe_name="$(echo "$file" | sed 's#[^A-Za-z0-9._-]#_#g')"
+
+        case "$SAFELOG_REPORT_FORMAT" in
+          json|both)
+            uv run safelog analyze "$file" \
+              --json \
+              --out "safelog-reports/${safe_name}.json" \
+              --fail-on never \
+              --max-size "$SAFELOG_MAX_SIZE" || exit $?
+            ;;
+        esac
+
+        case "$SAFELOG_REPORT_FORMAT" in
+          markdown|both)
+            uv run safelog analyze "$file" \
+              --markdown \
+              --out "safelog-reports/${safe_name}.md" \
+              --fail-on never \
+              --max-size "$SAFELOG_MAX_SIZE" || exit $?
+            ;;
+        esac
+
+        uv run safelog analyze "$file" \
+          --json \
+          --out "safelog-reports/${safe_name}.policy.json" \
+          --fail-on "$SAFELOG_FAIL_ON" \
+          --max-size "$SAFELOG_MAX_SIZE"
+        status=$?
+
+        if [ "$status" -eq 2 ]; then
+          exit 2
+        fi
+        if [ "$status" -ne 0 ]; then
+          overall_status=1
+        fi
+      done
+
+      exit "$overall_status"
+  artifacts:
+    when: always
+    paths:
+      - safelog-reports/
