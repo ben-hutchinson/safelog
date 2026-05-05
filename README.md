@@ -22,7 +22,20 @@ SafeLog will:
 
 ## The Problem
 
+<<<<<<< HEAD
 Developers often paste logs into AI tools while debugging.
+=======
+```bash
+uv run safelog scan examples/sensitive.log
+uv run safelog redact examples/sensitive.log
+uv run safelog redact examples/sensitive.log --out /tmp/safelog-redacted.log
+uv run safelog analyze examples/sensitive.log
+uv run safelog analyze examples/sensitive.log --json
+uv run safelog analyze examples/sensitive.log --markdown --out /tmp/safelog-report.md
+uv run safelog analyze examples/sensitive.log --fail-on warn --max-size 5MB
+uv run safelog scan examples/sensitive.log --config examples/custom-rules.toml
+```
+>>>>>>> 29f4dfb (add custom rules and github actions workflow)
 
 Those logs frequently contain:
 - API keys
@@ -107,7 +120,31 @@ safelog analyze app.log --fail-on warn --max-size 5MB
 - File paths
 - UUIDs
 
+<<<<<<< HEAD
 ---
+=======
+## Custom Rules
+
+SafeLog can load add-only custom rules from `safelog.toml`. Built-in rules remain active and cannot be disabled by custom config.
+
+```toml
+[rules.company_token]
+pattern = "COMPANY_[A-Z0-9]{20}"
+placeholder = "COMPANY_TOKEN"
+severity = "warn"
+description = "Internal company token"
+```
+
+Run with an explicit config:
+
+```bash
+uv run safelog scan app.log --config safelog.toml
+uv run safelog redact app.log --config safelog.toml
+uv run safelog analyze app.log --config safelog.toml
+```
+
+If `--config` is omitted, SafeLog looks for `safelog.toml` from the current directory upward. If no config exists, only built-in rules are used. Custom severities are `safe`, `warn`, and `block`; custom scan keys are reported as `custom_<rule_name>`.
+>>>>>>> 29f4dfb (add custom rules and github actions workflow)
 
 ## CI/CD Usage
 

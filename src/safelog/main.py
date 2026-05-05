@@ -10,6 +10,7 @@ from rich.table import Table
 
 from safelog.analyzer import analyze_text
 from safelog.redactor import redact_file
+from safelog.rules import CustomRule, RulesConfigError, load_custom_rules
 from safelog.safety import check_safety
 from safelog.scanner import scan_file
 
@@ -70,6 +71,18 @@ def _exit_file_error(error: OSError) -> None:
 
 def _print_usage_error(message: str) -> None:
     error_console.print(f"[red]Usage error:[/red] {message}")
+
+
+def _exit_config_error(error: RulesConfigError) -> None:
+    error_console.print(f"[red]Config error:[/red] {error}")
+    raise typer.Exit(code=2)
+
+
+def _load_rules(config: Path | None) -> list[CustomRule]:
+    try:
+        return load_custom_rules(config_path=config)
+    except RulesConfigError as error:
+        _exit_config_error(error)
 
 
 def _parse_max_size(value: str) -> int:
@@ -200,10 +213,18 @@ def _print_top_errors(top_errors: list[object]) -> None:
 
 
 @app.command()
-def scan(file: Path) -> None:
+def scan(
+    file: Path,
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Path to safelog.toml custom rules.",
+    ),
+) -> None:
     """Scan a log file for sensitive data."""
+    custom_rules = _load_rules(config)
     try:
-        results = scan_file(str(file))
+        results = scan_file(str(file), custom_rules)
     except OSError as error:
         _exit_file_error(error)
     _print_counts("Scan Results", results)
@@ -215,10 +236,16 @@ def redact(
     out: Path | None = typer.Option(
         None, "--out", help="Write redacted logs to a file."
     ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Path to safelog.toml custom rules.",
+    ),
 ) -> None:
     """Print or write a redacted version of a log file."""
+    custom_rules = _load_rules(config)
     try:
-        redacted = redact_file(str(file))
+        redacted = redact_file(str(file), custom_rules)
     except OSError as error:
         _exit_file_error(error)
 
@@ -271,6 +298,11 @@ def analyze(
         "--max-size",
         help="Maximum log file size, e.g. 500KB, 5MB, 1GB.",
     ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Path to safelog.toml custom rules.",
+    ),
 ) -> None:
     """Analyze a log file after scanning, safety checks, and redaction."""
     if json_output and markdown:
@@ -284,13 +316,14 @@ def analyze(
         raise typer.Exit(code=2)
 
     _check_file_size(file, max_size)
+    custom_rules = _load_rules(config)
 
     try:
-        scan_results = scan_file(str(file))
+        scan_results = scan_file(str(file), custom_rules)
     except OSError as error:
         _exit_file_error(error)
 
-    safety = check_safety(scan_results)
+    safety = check_safety(scan_results, custom_rules)
     report_mode = json_output or markdown
     if not report_mode:
         _print_safety(safety)
@@ -309,7 +342,7 @@ def analyze(
         raise typer.Exit(code=1)
 
     try:
-        redacted = redact_file(str(file))
+        redacted = redact_file(str(file), custom_rules)
     except OSError as error:
         _exit_file_error(error)
 

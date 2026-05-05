@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+from safelog.rules import CustomRule
 from safelog.scanner import DETECTION_PATTERNS
 
 
@@ -33,12 +34,11 @@ PLACEHOLDER_NAMES: dict[str, str] = {
 
 def _redact_pattern(
     text: str,
-    pattern_name: str,
+    label: str,
     pattern: re.Pattern[str],
     mappings: dict[str, dict[str, str]],
 ) -> str:
-    label = PLACEHOLDER_NAMES[pattern_name]
-    pattern_mapping = mappings.setdefault(pattern_name, {})
+    pattern_mapping = mappings.setdefault(label, {})
 
     def replace(match: re.Match[str]) -> str:
         value = match.group(0)
@@ -49,20 +49,36 @@ def _redact_pattern(
     return pattern.sub(replace, text)
 
 
-def redact_text(text: str) -> str:
+def redact_text(
+    text: str,
+    custom_rules: list[CustomRule] | None = None,
+) -> str:
     """Return text with sensitive values replaced by deterministic placeholders."""
     redacted = text
     mappings: dict[str, dict[str, str]] = {}
     for pattern_name in REDACTION_ORDER:
         redacted = _redact_pattern(
             redacted,
-            pattern_name,
+            PLACEHOLDER_NAMES[pattern_name],
             DETECTION_PATTERNS[pattern_name],
+            mappings,
+        )
+    for rule in custom_rules or []:
+        redacted = _redact_pattern(
+            redacted,
+            rule.placeholder,
+            rule.pattern,
             mappings,
         )
     return redacted
 
 
-def redact_file(path: str) -> str:
+def redact_file(
+    path: str,
+    custom_rules: list[CustomRule] | None = None,
+) -> str:
     """Read a log file and return redacted text."""
-    return redact_text(Path(path).read_text(encoding="utf-8", errors="replace"))
+    return redact_text(
+        Path(path).read_text(encoding="utf-8", errors="replace"),
+        custom_rules,
+    )

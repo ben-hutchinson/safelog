@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+from safelog.rules import CustomRule
+
 
 PathLike = str | Path
 
@@ -102,9 +104,20 @@ def count_uuids(text: str) -> int:
     return len(UUID_PATTERN.findall(text))
 
 
-def scan_text(text: str) -> dict[str, int]:
-    """Return structured counts for supported sensitive patterns."""
+def _custom_counts(text: str, custom_rules: list[CustomRule] | None) -> dict[str, int]:
+    if custom_rules is None:
+        return {}
     return {
+        rule.key: sum(1 for _ in rule.pattern.finditer(text)) for rule in custom_rules
+    }
+
+
+def scan_text(
+    text: str,
+    custom_rules: list[CustomRule] | None = None,
+) -> dict[str, int]:
+    """Return structured counts for supported sensitive patterns."""
+    results = {
         "emails": count_emails(text),
         "ips": count_ips(text),
         "urls": count_urls(text),
@@ -116,8 +129,13 @@ def scan_text(text: str) -> dict[str, int]:
         "file_paths": count_file_paths(text),
         "uuids": count_uuids(text),
     }
+    results.update(_custom_counts(text, custom_rules))
+    return results
 
 
-def scan_file(path: str) -> dict[str, int]:
+def scan_file(
+    path: str,
+    custom_rules: list[CustomRule] | None = None,
+) -> dict[str, int]:
     """Scan a log file and return structured sensitive pattern counts."""
-    return scan_text(read_log_file(path))
+    return scan_text(read_log_file(path), custom_rules)

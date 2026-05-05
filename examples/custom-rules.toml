@@ -1,0 +1,5 @@
+[rules.company_token]
+pattern = "COMPANY_[A-Z0-9]{20}"
+placeholder = "COMPANY_TOKEN"
+severity = "warn"
+description = "Fake internal company token for demos"
