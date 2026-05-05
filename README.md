@@ -1,58 +1,60 @@
 # SafeLog
 
-SafeLog is a local-first Python CLI for scanning, redacting, and analyzing log files before they are shared with people or AI tools.
+Privacy-first log analysis for developers.
 
-## Why This Exists
+Detect, redact, and analyze logs locally so you can debug without leaking sensitive data.
 
-Developers often paste logs into AI tools while debugging. Those logs can contain emails, IP addresses, API keys, tokens, internal URLs, and file paths. SafeLog helps prevent leaks by scanning and redacting sensitive values before local analysis.
+---
 
-## Problem
-
-Debug logs often contain emails, IP addresses, tokens, URLs, internal paths, and cloud keys. Developers still need quick debugging summaries, but raw logs should not leave the machine just to understand common errors.
-
-## Privacy Guarantee
-
-SafeLog runs locally. The MVP does not call external services, does not upload logs, and does not implement AI analysis. The `--allow-ai` flag is accepted only as a stub and prints a message; no AI provider receives data. Analysis runs on redacted text.
-
-## Installation
-
-From this repository:
-
-```bash
-uv sync
-uv run safelog --help
-```
-
-Install as a local uv tool:
+## Quick Start
 
 ```bash
 uv tool install .
-safelog --help
+safelog analyze examples/sensitive.log
 ```
 
-Build and install the wheel:
+SafeLog will:
+- detect sensitive data
+- redact it
+- generate a debugging summary
 
-```bash
-uv build
-uv tool install dist/*.whl
-safelog --help
-```
+---
 
-## Usage
+## The Problem
 
-```bash
-uv run safelog scan examples/sensitive.log
-uv run safelog redact examples/sensitive.log
-uv run safelog redact examples/sensitive.log --out /tmp/safelog-redacted.log
-uv run safelog analyze examples/sensitive.log
-uv run safelog analyze examples/sensitive.log --json
-uv run safelog analyze examples/sensitive.log --markdown --out /tmp/safelog-report.md
-uv run safelog analyze examples/sensitive.log --fail-on warn --max-size 5MB
-```
+Developers often paste logs into AI tools while debugging.
 
-## Before And After
+Those logs frequently contain:
+- API keys
+- tokens
+- emails
+- internal URLs
+- IP addresses
+- file paths
 
-Input:
+This creates a real risk of leaking sensitive data.
+
+---
+
+## The Solution
+
+SafeLog scans logs, redacts sensitive values, and analyzes them locally before anything is shared.
+
+---
+
+## Privacy Guarantee
+
+- Runs entirely locally
+- No network calls in the MVP
+- Raw logs are never sent anywhere
+- Analysis is performed on redacted logs only
+- `--allow-ai` is a stub and does not send data anywhere
+
+---
+
+## Example
+
+### Input
 
 ```text
 ERROR auth failure for user=demo.admin@example.test from 192.168.10.25 status=401
@@ -60,27 +62,38 @@ ERROR token validation failed token=ghp_demoTOKEN1234567890 status=500
 WARN aws key present key=AKIAABCDEFGHIJKLMNOP
 ```
 
-Redacted:
+### Output
 
-```text
-ERROR auth failure for user=[EMAIL_1] from [IP_1] status=401
-ERROR token validation failed token=[API_KEY_1] status=500
-WARN aws key present key=[AWS_KEY_1]
+```bash
+safelog analyze examples/sensitive.log
 ```
-
-## Example Analysis Output
 
 ```text
 Safety Check: WARN
 AWS keys detected. Review before sharing logs.
 
 Analysis Summary
-- Most frequent issue: ERROR token validation failed token=[API_KEY_1] (1 occurrence).
+- Most frequent issue: ERROR token validation failed token=[API_KEY_1]
 - Likely issue category: auth
 
 Findings
 - ERROR token validation failed token=[API_KEY_1] status=500 (1)
 ```
+
+---
+
+## Usage
+
+```bash
+safelog scan app.log
+safelog redact app.log --out safe.log
+safelog analyze app.log
+safelog analyze app.log --json
+safelog analyze app.log --markdown --out report.md
+safelog analyze app.log --fail-on warn --max-size 5MB
+```
+
+---
 
 ## What SafeLog Detects
 
@@ -94,19 +107,15 @@ Findings
 - File paths
 - UUIDs
 
+---
+
 ## CI/CD Usage
 
-SafeLog stays CI-agnostic: the CLI does the scanning, redaction, safety policy, and reporting. CI wrappers only install SafeLog, call the CLI, and collect artifacts.
+SafeLog is CI-agnostic. The CLI performs scanning, redaction, safety checks, and analysis.
 
 ### GitHub Actions
 
 ```yaml
-name: SafeLog
-
-on:
-  workflow_dispatch:
-  pull_request:
-
 jobs:
   safelog:
     runs-on: ubuntu-latest
@@ -116,48 +125,26 @@ jobs:
         with:
           path: "examples/sensitive.log"
           fail-on: "block"
-          report-format: "both"
-          max-size: "5MB"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: safelog-reports
-          path: safelog-reports/
 ```
-
-The composite action writes reports to `safelog-reports/` and appends Markdown reports to the GitHub Step Summary when available. MVP glob support is basic shell glob support.
 
 ### GitLab CI/CD
 
 ```yaml
 include:
   - local: "ci/gitlab/safelog.gitlab-ci.yml"
-
-variables:
-  SAFELOG_PATH: "logs/*.log"
-  SAFELOG_FAIL_ON: "block"
-  SAFELOG_MAX_SIZE: "5MB"
-  SAFELOG_REPORT_FORMAT: "both"
 ```
 
-The GitLab template stores `safelog-reports/` as artifacts with `when: always`.
+---
 
-### Fail-On Policy
+## How It Works
 
-- `never`: generate reports and never fail due to SafeLog findings.
-- `warn`: fail when SafeLog reports `warn` or `block`.
-- `block`: fail only when SafeLog reports `block`. This is the default.
+1. Scan logs for sensitive values  
+2. Redact sensitive data  
+3. Apply safety rules  
+4. Analyze redacted logs  
+5. Output summary  
 
-### Reports And Artifacts
-
-Use CLI report flags directly in CI when you do not need the wrapper:
-
-```bash
-uv run safelog analyze logs/app.log --json --out safelog-reports/app.json --fail-on block
-uv run safelog analyze logs/app.log --markdown --out safelog-reports/app.md --fail-on block
-```
-
-SafeLog scans raw logs locally inside the CI runner, redacts sensitive values before analysis, and does not make external network calls in the MVP.
+---
 
 ## Development
 
@@ -168,28 +155,36 @@ uv run pytest
 uv run pytest --cov=safelog
 ```
 
-## Architecture
+---
 
-All source code lives under `src/safelog/`.
+## Installation
 
-- `scanner.py` counts sensitive patterns.
-- `redactor.py` replaces sensitive values with deterministic placeholders.
-- `safety.py` blocks or warns based on scan results.
-- `analyzer.py` summarizes repeated errors, keywords, HTTP status codes, and likely issue category.
-- `main.py` wires the Typer CLI.
-- `ai.py` is intentionally a stub for future sanitized AI summaries.
+```bash
+uv tool install .
+```
+
+Or:
+
+```bash
+uv sync
+uv run safelog --help
+```
+
+---
 
 ## Limitations
 
-- Detection is regex-based and may miss uncommon secret formats.
-- API token detection is intentionally conservative.
-- Analysis is deterministic and heuristic, not root-cause proof.
-- The MVP does not support streaming logs or custom rules.
+- Regex-based detection may miss uncommon formats
+- Token detection is conservative
+- Analysis is heuristic and not full root-cause detection
+- No streaming logs or custom rules in the MVP
+
+---
 
 ## Roadmap
 
 - Custom detection rules
 - Configurable redaction labels
 - More issue categories
-- Local-only AI integrations after explicit sanitization
-- CI and editor integrations
+- Local AI summaries (opt-in)
+- Editor integrations
