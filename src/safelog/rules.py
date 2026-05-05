@@ -33,26 +33,39 @@ class CustomRule:
     @classmethod
     def from_config(
         cls,
-        name: str,
-        pattern: str,
+        name: object,
+        pattern: object,
+        label: object | None = None,
         placeholder: str | None = None,
         severity: str = "safe",
         description: str = "",
     ) -> "CustomRule":
+        if not isinstance(name, str):
+            raise RulesConfigError("Rule requires a string name.")
         if not RULE_NAME_PATTERN.fullmatch(name):
             raise RulesConfigError(f"Invalid rule name: {name}")
         if not isinstance(pattern, str) or not pattern:
             raise RulesConfigError(f"Rule {name} requires a string pattern.")
+        if label is not None and not isinstance(label, str):
+            raise RulesConfigError(f"Invalid label for rule {name}.")
+        if placeholder is not None and not isinstance(placeholder, str):
+            raise RulesConfigError(f"Invalid placeholder for rule {name}.")
+        if label is not None and placeholder is not None and label != placeholder:
+            raise RulesConfigError(
+                f"Rule {name} cannot define different label and placeholder values."
+            )
 
         try:
             compiled = re.compile(pattern)
         except re.error as error:
             raise RulesConfigError(f"Invalid regex for rule {name}: {error}") from error
 
-        resolved_placeholder = placeholder or name.upper()
+        resolved_placeholder = label or placeholder or name.upper()
         if not PLACEHOLDER_PATTERN.fullmatch(resolved_placeholder):
+            if label is not None:
+                raise RulesConfigError(f"Invalid label for rule {name}.")
             raise RulesConfigError(f"Invalid placeholder for rule {name}.")
-        if severity not in SEVERITIES:
+        if not isinstance(severity, str) or severity not in SEVERITIES:
             raise RulesConfigError(f"Invalid severity for rule {name}: {severity}")
         if not isinstance(description, str):
             raise RulesConfigError(f"Invalid description for rule {name}.")
@@ -93,6 +106,45 @@ def _read_toml(path: Path) -> dict[str, Any]:
     return parsed
 
 
+def _load_rules_array(raw_rules: list[Any]) -> list[CustomRule]:
+    rules: list[CustomRule] = []
+    seen_names: set[str] = set()
+    for index, raw_rule in enumerate(raw_rules, start=1):
+        if not isinstance(raw_rule, dict):
+            raise RulesConfigError(f"Rule entry {index} must be a table.")
+        rule = CustomRule.from_config(
+            name=raw_rule.get("name"),
+            pattern=raw_rule.get("pattern"),
+            label=raw_rule.get("label"),
+            placeholder=raw_rule.get("placeholder"),
+            severity=raw_rule.get("severity", "safe"),
+            description=raw_rule.get("description", ""),
+        )
+        if rule.name in seen_names:
+            raise RulesConfigError(f"Duplicate rule name: {rule.name}")
+        seen_names.add(rule.name)
+        rules.append(rule)
+    return rules
+
+
+def _load_rules_table(rules_table: dict[str, Any]) -> list[CustomRule]:
+    rules: list[CustomRule] = []
+    for name, raw_rule in rules_table.items():
+        if not isinstance(raw_rule, dict):
+            raise RulesConfigError(f"Rule {name} must be a table.")
+        rules.append(
+            CustomRule.from_config(
+                name=name,
+                pattern=raw_rule.get("pattern"),
+                label=raw_rule.get("label"),
+                placeholder=raw_rule.get("placeholder"),
+                severity=raw_rule.get("severity", "safe"),
+                description=raw_rule.get("description", ""),
+            )
+        )
+    return rules
+
+
 def load_custom_rules(
     config_path: str | Path | None = None,
     start: Path | None = None,
@@ -105,21 +157,9 @@ def load_custom_rules(
         raise RulesConfigError(f"Config file not found: {path}")
 
     parsed = _read_toml(path)
-    rules_table = parsed.get("rules", {})
-    if not isinstance(rules_table, dict):
-        raise RulesConfigError("Config [rules] must be a table.")
-
-    rules: list[CustomRule] = []
-    for name, raw_rule in rules_table.items():
-        if not isinstance(raw_rule, dict):
-            raise RulesConfigError(f"Rule {name} must be a table.")
-        rules.append(
-            CustomRule.from_config(
-                name=name,
-                pattern=raw_rule.get("pattern"),
-                placeholder=raw_rule.get("placeholder"),
-                severity=raw_rule.get("severity", "safe"),
-                description=raw_rule.get("description", ""),
-            )
-        )
-    return rules
+    raw_rules = parsed.get("rules", {})
+    if isinstance(raw_rules, list):
+        return _load_rules_array(raw_rules)
+    if isinstance(raw_rules, dict):
+        return _load_rules_table(raw_rules)
+    raise RulesConfigError("Config rules must be an array of tables or a table.")

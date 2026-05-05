@@ -56,18 +56,18 @@ def redact_text(
     """Return text with sensitive values replaced by deterministic placeholders."""
     redacted = text
     mappings: dict[str, dict[str, str]] = {}
-    for pattern_name in REDACTION_ORDER:
-        redacted = _redact_pattern(
-            redacted,
-            PLACEHOLDER_NAMES[pattern_name],
-            DETECTION_PATTERNS[pattern_name],
-            mappings,
-        )
     for rule in custom_rules or []:
         redacted = _redact_pattern(
             redacted,
             rule.placeholder,
             rule.pattern,
+            mappings,
+        )
+    for pattern_name in REDACTION_ORDER:
+        redacted = _redact_pattern(
+            redacted,
+            PLACEHOLDER_NAMES[pattern_name],
+            DETECTION_PATTERNS[pattern_name],
             mappings,
         )
     return redacted

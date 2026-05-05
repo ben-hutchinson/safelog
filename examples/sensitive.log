@@ -1,7 +1,9 @@
 2026-05-05T11:00:00Z INFO deploy started by user=demo.admin@example.test from 192.168.10.25 request_id=123e4567-e89b-12d3-a456-426614174000
-2026-05-05T11:00:01Z ERROR checkout API timeout status=500 url=https://payments.example.test/v1/charge
-2026-05-05T11:00:01Z ERROR checkout API timeout status=500 url=https://payments.example.test/v1/charge
-2026-05-05T11:00:02Z ERROR connection refused status=500 host=db.internal.example.test path=/srv/app/payments.py
-2026-05-05T11:00:03Z ERROR token validation failed jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.signature_123 status=500
-2026-05-05T11:00:04Z WARN api key present token=ghp_demoTOKEN1234567890
-2026-05-05T11:00:05Z WARN aws key present key=AKIAABCDEFGHIJKLMNOP
+2026-05-05T11:00:01Z ERROR checkout API timeout url=https://payments.example.test/v1/charge
+2026-05-05T11:00:01Z ERROR checkout API timeout url=https://payments.example.test/v1/charge
+2026-05-05T11:00:02Z ERROR upstream returned HTTP 500 for checkout request
+2026-05-05T11:00:02Z ERROR upstream returned HTTP 500 for checkout request
+2026-05-05T11:00:03Z ERROR connection refused host=db.internal.example.test path=/srv/app/payments.py
+2026-05-05T11:00:04Z ERROR token validation failed jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZW1vIn0.signature_123
+2026-05-05T11:00:05Z WARN api key present token=ghp_demoTOKEN1234567890
+2026-05-05T11:00:06Z WARN aws key present key=AKIAABCDEFGHIJKLMNOP

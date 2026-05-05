@@ -1,5 +1,13 @@
-[rules.company_token]
-pattern = "COMPANY_[A-Z0-9]{20}"
-placeholder = "COMPANY_TOKEN"
+[[rules]]
+name = "stripe_secret_key"
+pattern = "sk_live_[A-Za-z0-9]+"
+label = "STRIPE_KEY"
+severity = "block"
+description = "Fake Stripe-style live secret key for demos"
+
+[[rules]]
+name = "internal_user_id"
+pattern = "user_[0-9]+"
+label = "USER_ID"
 severity = "warn"
-description = "Fake internal company token for demos"
+description = "Fake internal user identifier for demos"

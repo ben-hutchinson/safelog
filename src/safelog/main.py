@@ -78,9 +78,16 @@ def _exit_config_error(error: RulesConfigError) -> None:
     raise typer.Exit(code=2)
 
 
-def _load_rules(config: Path | None) -> list[CustomRule]:
+def _rules_path(rules: Path | None, config: Path | None) -> Path | None:
+    if rules is not None and config is not None:
+        _print_usage_error("Use only one of --rules or --config.")
+        raise typer.Exit(code=2)
+    return rules or config
+
+
+def _load_rules(rules: Path | None, config: Path | None) -> list[CustomRule]:
     try:
-        return load_custom_rules(config_path=config)
+        return load_custom_rules(config_path=_rules_path(rules, config))
     except RulesConfigError as error:
         _exit_config_error(error)
 
@@ -215,14 +222,19 @@ def _print_top_errors(top_errors: list[object]) -> None:
 @app.command()
 def scan(
     file: Path,
+    rules: Path | None = typer.Option(
+        None,
+        "--rules",
+        help="Path to safelog.toml custom regex rules.",
+    ),
     config: Path | None = typer.Option(
         None,
         "--config",
-        help="Path to safelog.toml custom rules.",
+        help="Deprecated alias for --rules.",
     ),
 ) -> None:
     """Scan a log file for sensitive data."""
-    custom_rules = _load_rules(config)
+    custom_rules = _load_rules(rules, config)
     try:
         results = scan_file(str(file), custom_rules)
     except OSError as error:
@@ -236,14 +248,19 @@ def redact(
     out: Path | None = typer.Option(
         None, "--out", help="Write redacted logs to a file."
     ),
+    rules: Path | None = typer.Option(
+        None,
+        "--rules",
+        help="Path to safelog.toml custom regex rules.",
+    ),
     config: Path | None = typer.Option(
         None,
         "--config",
-        help="Path to safelog.toml custom rules.",
+        help="Deprecated alias for --rules.",
     ),
 ) -> None:
     """Print or write a redacted version of a log file."""
-    custom_rules = _load_rules(config)
+    custom_rules = _load_rules(rules, config)
     try:
         redacted = redact_file(str(file), custom_rules)
     except OSError as error:
@@ -301,7 +318,12 @@ def analyze(
     config: Path | None = typer.Option(
         None,
         "--config",
-        help="Path to safelog.toml custom rules.",
+        help="Deprecated alias for --rules.",
+    ),
+    rules: Path | None = typer.Option(
+        None,
+        "--rules",
+        help="Path to safelog.toml custom regex rules.",
     ),
 ) -> None:
     """Analyze a log file after scanning, safety checks, and redaction."""
@@ -316,7 +338,7 @@ def analyze(
         raise typer.Exit(code=2)
 
     _check_file_size(file, max_size)
-    custom_rules = _load_rules(config)
+    custom_rules = _load_rules(rules, config)
 
     try:
         scan_results = scan_file(str(file), custom_rules)

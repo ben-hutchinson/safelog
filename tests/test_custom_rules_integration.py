@@ -75,6 +75,38 @@ severity = "warn"
     assert "Custom Company Token" in result.output
 
 
+def test_cli_scan_honors_rules_flag_with_rules_array_schema(tmp_path: Path) -> None:
+    log = tmp_path / "app.log"
+    rules = tmp_path / "safelog.toml"
+    log.write_text(
+        "user=ops@example.test key=sk_live_abc123 user_id=user_123\n",
+        encoding="utf-8",
+    )
+    rules.write_text(
+        """
+[[rules]]
+name = "stripe_secret_key"
+pattern = "sk_live_[A-Za-z0-9]+"
+label = "STRIPE_KEY"
+severity = "block"
+
+[[rules]]
+name = "internal_user_id"
+pattern = "user_[0-9]+"
+label = "USER_ID"
+severity = "warn"
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["scan", str(log), "--rules", str(rules)])
+
+    assert result.exit_code == 0
+    assert "Custom Stripe Secret Key" in result.output
+    assert "Custom Internal User Id" in result.output
+    assert "Emails" in result.output
+
+
 def test_cli_redact_honors_explicit_config(tmp_path: Path) -> None:
     log = tmp_path / "app.log"
     config = tmp_path / "safelog.toml"
@@ -94,6 +126,36 @@ placeholder = "COMPANY_TOKEN"
     assert result.output == "token=[COMPANY_TOKEN_1]\n"
 
 
+def test_cli_redact_uses_label_from_rules_array_schema(tmp_path: Path) -> None:
+    log = tmp_path / "app.log"
+    rules = tmp_path / "safelog.toml"
+    log.write_text(
+        "key=sk_live_abc123 user=user_123 again=user_123\n",
+        encoding="utf-8",
+    )
+    rules.write_text(
+        """
+[[rules]]
+name = "stripe_secret_key"
+pattern = "sk_live_[A-Za-z0-9]+"
+label = "STRIPE_KEY"
+severity = "block"
+
+[[rules]]
+name = "internal_user_id"
+pattern = "user_[0-9]+"
+label = "USER_ID"
+severity = "warn"
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["redact", str(log), "--rules", str(rules)])
+
+    assert result.exit_code == 0
+    assert result.output == "key=[STRIPE_KEY_1] user=[USER_ID_1] again=[USER_ID_1]\n"
+
+
 def test_cli_analyze_blocks_custom_block_rule_by_default(tmp_path: Path) -> None:
     log = tmp_path / "app.log"
     config = tmp_path / "safelog.toml"
@@ -111,6 +173,52 @@ severity = "block"
 
     assert result.exit_code == 1
     assert "custom rule company_token" in result.output
+
+
+def test_cli_analyze_blocks_custom_rule_from_rules_flag(tmp_path: Path) -> None:
+    log = tmp_path / "app.log"
+    rules = tmp_path / "safelog.toml"
+    log.write_text("ERROR key=sk_live_abc123 timeout 500\n", encoding="utf-8")
+    rules.write_text(
+        """
+[[rules]]
+name = "stripe_secret_key"
+pattern = "sk_live_[A-Za-z0-9]+"
+label = "STRIPE_KEY"
+severity = "block"
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["analyze", str(log), "--rules", str(rules)])
+
+    assert result.exit_code == 1
+    assert "custom rule stripe_secret_key" in result.output
+
+
+def test_cli_analyze_force_local_redacts_rules_array_values(tmp_path: Path) -> None:
+    log = tmp_path / "app.log"
+    rules = tmp_path / "safelog.toml"
+    log.write_text("ERROR key=sk_live_abc123 timeout 500\n", encoding="utf-8")
+    rules.write_text(
+        """
+[[rules]]
+name = "stripe_secret_key"
+pattern = "sk_live_[A-Za-z0-9]+"
+label = "STRIPE_KEY"
+severity = "block"
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["analyze", str(log), "--rules", str(rules), "--force-local"],
+    )
+
+    assert result.exit_code == 0
+    assert "sk_live_abc123" not in result.output
+    assert "[STRIPE_KEY_1]" in result.output
 
 
 def test_cli_analyze_json_includes_custom_scan_results(tmp_path: Path) -> None:
@@ -146,6 +254,59 @@ severity = "warn"
     assert payload["safety"]["status"] == "warn"
     assert "COMPANY_ABCDEFGHIJKLMNOPQRST" not in payload["summary"]
     assert "[COMPANY_TOKEN_1]" in payload["top_errors"][0]["line"]
+
+
+def test_cli_analyze_markdown_includes_rules_array_custom_results(
+    tmp_path: Path,
+) -> None:
+    log = tmp_path / "app.log"
+    rules = tmp_path / "safelog.toml"
+    log.write_text("ERROR user=user_123 timeout 500\n", encoding="utf-8")
+    rules.write_text(
+        """
+[[rules]]
+name = "internal_user_id"
+pattern = "user_[0-9]+"
+label = "USER_ID"
+severity = "warn"
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "analyze",
+            str(log),
+            "--rules",
+            str(rules),
+            "--markdown",
+            "--fail-on",
+            "never",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "- custom_internal_user_id: 1" in result.output
+    assert "- Status: warn" in result.output
+    assert "[USER_ID_1]" in result.output
+
+
+def test_cli_rejects_rules_and_config_together(tmp_path: Path) -> None:
+    log = tmp_path / "app.log"
+    rules = tmp_path / "safelog.toml"
+    config = tmp_path / "legacy.toml"
+    log.write_text("ERROR timeout 500\n", encoding="utf-8")
+    rules.write_text('[[rules]]\nname = "x"\npattern = "x"\n', encoding="utf-8")
+    config.write_text('[rules.x]\npattern = "x"\n', encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["analyze", str(log), "--rules", str(rules), "--config", str(config)],
+    )
+
+    assert result.exit_code == 2
+    assert "Use only one of --rules or --config." in result.stderr
 
 
 def test_cli_invalid_config_exits_with_code_two(tmp_path: Path) -> None:
